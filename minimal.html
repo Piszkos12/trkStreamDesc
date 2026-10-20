@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <title>Now Playing – Minimal</title>
+  <!--
+    Clean Swiss-style lower third: an accent line wipes in, then the lines of
+    text rise out of masks one after the other.
+    OBS: Browser Source, URL http://localhost/minimal.html, 1920x1080, transparent.
+    URL parameters: see nowplaying.js (?hide=, ?ws=, ?demo).
+  -->
+  <style>
+    html,
+    body {
+      margin: 0;
+      height: 100%;
+      background: transparent;
+      overflow: hidden;
+      font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      color: #fff;
+    }
+
+    #lower {
+      position: absolute;
+      left: 80px;
+      bottom: 80px;
+      max-width: 1300px;
+      text-shadow: 0 2px 14px rgba(0, 0, 0, .55);
+    }
+
+    .line {
+      width: 0;
+      height: 5px;
+      margin-bottom: 18px;
+      background: #ffd400;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, .35);
+      transition: width .5s cubic-bezier(.7, 0, .2, 1) .5s;
+    }
+
+    #lower.on .line {
+      width: 120px;
+      transition-delay: 0s;
+    }
+
+    /* every row slides up out of its own clipping mask */
+    .mask {
+      overflow: hidden;
+      padding: 4px 0;
+    }
+
+    .mask > div {
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      transform: translateY(110%);
+      transition: transform .55s cubic-bezier(.7, 0, .84, 0);
+    }
+
+    #lower.on .mask > div {
+      transform: none;
+      transition: transform .8s cubic-bezier(.16, 1, .3, 1);
+    }
+
+    #lower.on .mask:nth-of-type(2) > div { transition-delay: .25s; }
+    #lower.on .mask:nth-of-type(3) > div { transition-delay: .4s; }
+    #lower.on .mask:nth-of-type(4) > div { transition-delay: .55s; }
+
+    #title {
+      font-size: 68px;
+      font-weight: 800;
+      line-height: 1.05;
+      letter-spacing: -1.5px;
+    }
+
+    #artist {
+      font-size: 26px;
+      font-weight: 300;
+      letter-spacing: 7px;
+      text-transform: uppercase;
+    }
+
+    #meta {
+      font-size: 16px;
+      letter-spacing: 1px;
+      opacity: .75;
+    }
+
+    /* warm-up: the accent line breathes */
+    #lower.idle .line {
+      animation: breathe 2.4s ease-in-out infinite;
+    }
+
+    @keyframes breathe {
+      50% {
+        width: 40px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div id="lower">
+    <div class="line"></div>
+    <div class="mask"><div id="title"></div></div>
+    <div class="mask"><div id="artist"></div></div>
+    <div class="mask"><div id="meta"></div></div>
+  </div>
+
+  <script src="nowplaying.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const OUT_MS = 650;  // rows slide down + line retracts
+    let details = '';
+
+    function show(track, previous) {
+      const lower = $('lower');
+      lower.classList.remove('on');
+      setTimeout(() => {
+        lower.classList.toggle('idle', !!track.idle);
+        $('title').textContent = track.title || '—';
+        $('artist').textContent = track.artist || '';
+        details = [track.album, track.year, track.genre].filter(Boolean).join('  /  ');
+        updateMeta();
+        lower.classList.add('on');
+        NowPlaying.autoHide(() => lower.classList.remove('on'));
+      }, previous ? OUT_MS : 50);
+    }
+
+    function updateMeta() {
+      const t = NowPlaying.track;
+      if (!t) return;
+      $('meta').textContent = t.idle
+        ? 'Stand by'
+        : [details, NowPlaying.formatTime(NowPlaying.elapsed())].filter(Boolean).join('  /  ');
+    }
+
+    setInterval(updateMeta, 500);
+    NowPlaying.start({ onTrack: show });
+  </script>
+</body>
+
+</html>

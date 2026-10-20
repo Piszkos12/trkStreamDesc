@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <title>Now Playing – Vinyl</title>
+  <!--
+    A record slides out of its sleeve and spins; the colors are derived from the
+    artist + title, long texts scroll.
+    OBS: Browser Source, URL http://localhost/vinyl.html, 1920x1080, transparent.
+    URL parameters: see nowplaying.js (?hide=, ?ws=).
+  -->
+  <style>
+    html,
+    body {
+      margin: 0;
+      height: 100%;
+      background: transparent;
+      overflow: hidden;
+      font-family: Georgia, "Times New Roman", serif;
+    }
+
+    /* whole widget: slides in from the right */
+    #wrap {
+      position: absolute;
+      right: 70px;
+      bottom: 70px;
+      display: flex;
+      align-items: center;
+      transition: transform 1s cubic-bezier(.6, -0.3, .3, 1.3), opacity .8s;
+    }
+
+    #wrap.hidden {
+      opacity: 0;
+      transform: translateX(140%);
+    }
+
+    /* sleeve (front) and disc (behind it) */
+    .stage {
+      position: relative;
+      flex: none;
+      width: 260px;
+      height: 260px;
+    }
+
+    .sleeve {
+      position: absolute;
+      inset: 0;
+      z-index: 2;
+      display: flex;
+      align-items: flex-end;
+      box-sizing: border-box;
+      padding: 16px;
+      border-radius: 6px;
+      background: linear-gradient(135deg, var(--c1), var(--c2));
+      box-shadow: 0 12px 30px rgba(0, 0, 0, .55);
+    }
+
+    /* big initial letter of the artist on the sleeve */
+    .initial {
+      font-size: 96px;
+      font-weight: 700;
+      font-style: italic;
+      line-height: .8;
+      color: rgba(255, 255, 255, .85);
+    }
+
+    .disc {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 1;
+      width: 240px;
+      height: 240px;
+      border-radius: 50%;
+      background:
+        radial-gradient(circle, var(--c2) 0 17%, #111 17.5% 19%, transparent 19%),
+        repeating-radial-gradient(circle, #111 0 2px, #1d1d1d 2px 4px);
+      box-shadow: 0 8px 25px rgba(0, 0, 0, .6);
+      transition: left 1.1s cubic-bezier(.3, 1.2, .4, 1);
+    }
+
+    /* light reflection on the grooves - makes the rotation visible */
+    .disc::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      background: conic-gradient(from 30deg, transparent 0 40deg, rgba(255, 255, 255, .18) 60deg,
+          transparent 80deg 220deg, rgba(255, 255, 255, .12) 240deg, transparent 260deg);
+    }
+
+    .disc.out {
+      left: 140px;
+    }
+
+    .disc.spin {
+      animation: spin 1.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .hole {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 8px;
+      height: 8px;
+      margin: -4px;
+      border-radius: 50%;
+      background: #ddd;
+    }
+
+    /* paper-like text panel, partly hidden behind the stage. The left padding
+       clears the pulled-out disc: stage 260 - overlap 120 = panel starts at 140,
+       disc ends at 140 + 240 = 380, so text starts at 380 - 140 + 24 = 264 */
+    .info {
+      position: relative;
+      z-index: 0;
+      min-width: 280px;
+      max-width: 660px;
+      margin-left: -120px;
+      padding: 26px 36px 24px 264px;
+      overflow: hidden;
+      border-radius: 0 14px 14px 0;
+      background: rgba(250, 244, 232, .96);
+      color: #2a1f14;
+      box-shadow: 0 12px 30px rgba(0, 0, 0, .45);
+    }
+
+    .kicker {
+      font: 600 13px/1 "Segoe UI", sans-serif;
+      letter-spacing: 5px;
+      text-transform: uppercase;
+      color: var(--c1);
+    }
+
+    /* a row scrolls (marquee) only when its text does not fit */
+    .row {
+      overflow: hidden;
+      white-space: nowrap;
+    }
+
+    .row span {
+      display: inline-block;
+    }
+
+    .row.marquee span {
+      padding-right: 80px;
+      animation: marquee 12s linear infinite;
+    }
+
+    @keyframes marquee {
+
+      0%,
+      15% {
+        transform: translateX(0);
+      }
+
+      100% {
+        transform: translateX(-100%);
+      }
+    }
+
+    #title {
+      margin-top: 10px;
+      font-size: 40px;
+      font-weight: 700;
+    }
+
+    #artist {
+      margin-top: 4px;
+      font-size: 24px;
+      font-style: italic;
+      color: #6b5440;
+    }
+
+    #extra {
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+      margin-top: 10px;
+      font: 14px "Segoe UI", sans-serif;
+      color: #8d7864;
+    }
+
+    .progress {
+      height: 3px;
+      margin-top: 8px;
+      overflow: hidden;
+      border-radius: 2px;
+      background: #e2d6c3;
+    }
+
+    .progress i {
+      display: block;
+      width: 0;
+      height: 100%;
+      background: var(--c1);
+      transition: width 1s linear;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="wrap" class="hidden">
+    <div class="stage">
+      <div class="disc" id="disc"><i class="hole"></i></div>
+      <div class="sleeve"><span class="initial" id="initial">♪</span></div>
+    </div>
+    <div class="info">
+      <div class="kicker">Now spinning</div>
+      <div class="row" id="title"><span></span></div>
+      <div class="row" id="artist"><span></span></div>
+      <div id="extra"><span id="album"></span><span id="time">0:00</span></div>
+      <div class="progress"><i id="progress"></i></div>
+    </div>
+  </div>
+
+  <script src="nowplaying.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const OUT_MS = 1000;           // slide-out before the new track is shown
+    const DISC_DELAY_MS = 900;     // the disc comes out after the widget arrived
+    const PROGRESS_SCALE_S = 360;  // the track length is unknown: bar fills in 6 min
+    let hideTimer = null;
+
+    /** Stable hue (0..359) for a string, so a track always gets the same colors. */
+    function hue(text) {
+      let h = 0;
+      for (const ch of text) h = (h * 31 + ch.codePointAt(0)) % 360;
+      return h;
+    }
+
+    /** Sets a row's text and turns on scrolling when it overflows. */
+    function setRow(id, text) {
+      const row = $(id);
+      const span = row.firstElementChild;
+      row.classList.remove('marquee');
+      span.textContent = text;
+      requestAnimationFrame(() => row.classList.toggle('marquee', span.scrollWidth > row.clientWidth));
+    }
+
+    function hide() {
+      $('disc').classList.remove('out');
+      setTimeout(() => $('wrap').classList.add('hidden'), DISC_DELAY_MS);
+    }
+
+    function show(track, previous) {
+      const wrap = $('wrap');
+      const disc = $('disc');
+      wrap.classList.add('hidden');
+      disc.classList.remove('out', 'spin');
+
+      setTimeout(() => {
+        const h = hue((track.artist || '') + (track.title || ''));
+        const root = document.documentElement.style;
+        root.setProperty('--c1', `hsl(${h} 70% 45%)`);
+        root.setProperty('--c2', `hsl(${(h + 50) % 360} 80% 60%)`);
+
+        const name = (track.artist || track.title || '').trim();
+        $('initial').textContent = name ? name[0].toUpperCase() : '♪';
+        setRow('title', track.title || '—');
+        setRow('artist', track.artist || '');
+        $('album').textContent = [track.album, track.year].filter(Boolean).join(' · ');
+
+        wrap.classList.remove('hidden');
+        setTimeout(() => disc.classList.add('out', 'spin'), DISC_DELAY_MS);
+
+        clearTimeout(hideTimer);
+        if (NowPlaying.hideAfter > 0) hideTimer = setTimeout(hide, NowPlaying.hideAfter * 1000);
+      }, previous ? OUT_MS : 50);
+    }
+
+    setInterval(() => {
+      if (!NowPlaying.track) return;
+      const s = NowPlaying.elapsed();
+      $('time').textContent = NowPlaying.formatTime(s);
+      $('progress').style.width = `${Math.min(100, (s / PROGRESS_SCALE_S) * 100)}%`;
+    }, 1000);
+
+    NowPlaying.start({ onTrack: show });
+  </script>
+</body>
+
+</html>

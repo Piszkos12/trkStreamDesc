@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <title>Now Playing – LED Ticker</title>
+  <!--
+    Full-width amber LED dot-matrix ticker at the bottom of the screen, with the
+    current and the previous track scrolling endlessly.
+    OBS: Browser Source, URL http://localhost/ledticker.html, 1920x1080, transparent.
+    URL parameters: see nowplaying.js (?hide=, ?ws=, ?demo).
+  -->
+  <style>
+    html,
+    body {
+      margin: 0;
+      height: 100%;
+      background: transparent;
+      overflow: hidden;
+      font-family: "Segoe UI", system-ui, sans-serif;
+    }
+
+    #ticker {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: flex;
+      height: 76px;
+      border-top: 2px solid #2a2a2a;
+      background: #0a0a0a;
+      box-shadow: 0 -10px 30px rgba(0, 0, 0, .5);
+      transition: transform .6s cubic-bezier(.2, 1, .3, 1);
+    }
+
+    #ticker.hidden {
+      transform: translateY(110%);
+    }
+
+    .tag {
+      flex: none;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 28px;
+      background: linear-gradient(#e0122f, #a90b22);
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: 3px;
+      color: #fff;
+      clip-path: polygon(0 0, 100% 0, calc(100% - 22px) 100%, 0 100%);
+      padding-right: 46px;
+    }
+
+    .dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #fff;
+      animation: pulse 1.2s infinite;
+    }
+
+    @keyframes pulse {
+      50% {
+        opacity: .2;
+      }
+    }
+
+    .board {
+      position: relative;
+      flex: 1;
+      display: flex;
+      align-items: center;
+      overflow: hidden;
+    }
+
+    /* dot-matrix mask: dark grid over the glowing text */
+    .board::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: radial-gradient(circle, transparent 1.3px, #0a0a0a 1.9px);
+      background-size: 5px 5px;
+    }
+
+    .board.flash {
+      animation: flash .5s steps(2) 3;
+    }
+
+    @keyframes flash {
+      50% {
+        opacity: .15;
+      }
+    }
+
+    /* two copies of the text scroll by -50% for a seamless loop */
+    #scroll {
+      display: flex;
+      white-space: nowrap;
+      animation: scroll var(--duration, 30s) linear infinite;
+    }
+
+    #scroll span {
+      padding-right: 120px;
+      font: 900 46px/1 "Arial Black", "Segoe UI", sans-serif;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: #ffb000;
+      text-shadow: 0 0 10px rgba(255, 176, 0, .9), 0 0 24px rgba(255, 120, 0, .6);
+    }
+
+    @keyframes scroll {
+      to {
+        transform: translateX(-50%);
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div id="ticker">
+    <div class="tag"><i class="dot"></i>NOW PLAYING</div>
+    <div class="board" id="board"><div id="scroll"></div></div>
+  </div>
+
+  <script src="nowplaying.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const SPEED_PX_S = 140;   // scroll speed
+    const SEP = '   ★   ';
+    let current = null;
+    let previous = null;
+
+    /** Rebuilds the scrolling text and sets the duration for a constant speed. */
+    function render() {
+      const parts = [];
+      if (current.idle) {
+        parts.push('Warming up', 'Waiting for the first track', 'Stay tuned');
+      } else {
+        parts.push(`${current.artist ? `${current.artist} — ` : ''}${current.title}`);
+        if (current.album) parts.push(current.year ? `${current.album} (${current.year})` : current.album);
+        const bpm = current.tags && current.tags.bpm ? `${current.tags.bpm} BPM` : '';
+        const style = [current.genre, bpm].filter(Boolean).join(' · ');
+        if (style) parts.push(style);
+        if (previous) parts.push(`Previously: ${previous.artist ? `${previous.artist} — ` : ''}${previous.title}`);
+      }
+      const text = SEP + parts.join(SEP);
+      const scroll = $('scroll');
+      scroll.replaceChildren(...[0, 1].map(() => {
+        const span = document.createElement('span');
+        span.textContent = text;
+        return span;
+      }));
+      // restart the animation from the beginning
+      scroll.style.animation = 'none';
+      requestAnimationFrame(() => {
+        scroll.style.setProperty('--duration', `${scroll.scrollWidth / 2 / SPEED_PX_S}s`);
+        scroll.style.animation = '';
+      });
+    }
+
+    function show(track) {
+      current = track;
+      previous = null;
+      render();
+      const board = $('board');
+      board.classList.remove('flash');
+      requestAnimationFrame(() => board.classList.add('flash'));
+      $('ticker').classList.remove('hidden');
+      NowPlaying.autoHide(() => $('ticker').classList.add('hidden'));
+      if (!track.idle) NowPlaying.send({ cmd: 'history', limit: 1, id: 'prev' });
+    }
+
+    function onMessage(msg) {
+      if (msg.type !== 'history' || msg.id !== 'prev' || !msg.items[0]) return;
+      previous = msg.items[0];
+      render();
+    }
+
+    NowPlaying.start({ onTrack: show, onMessage });
+  </script>
+</body>
+
+</html>

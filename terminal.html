@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <title>Now Playing – Terminal</title>
+  <!--
+    Green phosphor terminal: the track data is "typed" as the output of a
+    command, with a blinking cursor and scanlines.
+    OBS: Browser Source, URL http://localhost/terminal.html, 1920x1080, transparent.
+    URL parameters: see nowplaying.js (?hide=, ?ws=, ?demo).
+  -->
+  <style>
+    html,
+    body {
+      margin: 0;
+      height: 100%;
+      background: transparent;
+      overflow: hidden;
+    }
+
+    #term {
+      position: absolute;
+      left: 60px;
+      bottom: 60px;
+      width: 880px;
+      overflow: hidden;
+      border: 1px solid #1f6a35;
+      border-radius: 10px;
+      background: rgba(4, 14, 7, .92);
+      box-shadow: 0 0 40px rgba(0, 255, 110, .18), 0 20px 40px rgba(0, 0, 0, .5);
+      transition: opacity .4s, transform .4s;
+    }
+
+    #term.hidden {
+      opacity: 0;
+      transform: scale(.96);
+    }
+
+    /* scanlines over the whole window */
+    #term::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: repeating-linear-gradient(rgba(0, 0, 0, .25) 0 1px, transparent 1px 3px);
+    }
+
+    .bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      background: #0d2414;
+      font: 14px Consolas, monospace;
+      color: #6fbf87;
+    }
+
+    .bar i {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #2e5c3b;
+    }
+
+    .bar span {
+      margin-left: 10px;
+    }
+
+    #screen {
+      min-height: 200px;
+      margin: 0;
+      padding: 18px 22px 22px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font: 22px/1.45 Consolas, "Cascadia Mono", monospace;
+      color: #39ff7a;
+      text-shadow: 0 0 6px rgba(57, 255, 122, .7);
+    }
+
+    .prompt { color: #9dffbf; }
+    .key { color: #1fbf58; }
+    .dim { color: #1d8f45; }
+
+    .cursor {
+      display: inline-block;
+      width: .6em;
+      height: 1.1em;
+      vertical-align: text-bottom;
+      background: #39ff7a;
+      box-shadow: 0 0 8px #39ff7a;
+      animation: blink 1s steps(1) infinite;
+    }
+
+    @keyframes blink {
+      50% {
+        opacity: 0;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div id="term">
+    <div class="bar"><i></i><i></i><i></i><span>trkstream@traktor: ~</span></div>
+    <pre id="screen"></pre>
+  </div>
+
+  <script src="nowplaying.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const COMMAND_CHAR_MS = 45;   // typing speed of the command
+    const OUTPUT_CHAR_MS = 12;    // typing speed of the output
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    const screen = $('screen');
+    const cursor = document.createElement('span');
+    cursor.className = 'cursor';
+    let typingRun = 0;            // a new track cancels the running animation
+    let timeSpan = null;          // live "elapsed" value
+
+    /** Lines of the output: [css class, text] segments; cmd lines type slower. */
+    function linesFor(track) {
+      if (track.idle) {
+        return [
+          { cmd: true, parts: [['prompt', '$ '], ['', 'nowplaying --wait']] },
+          { parts: [['dim', 'connecting to traktor broadcast...']] },
+          { parts: [['dim', 'waiting for the first track']] },
+        ];
+      }
+      const row = (key, value) => ({ parts: [['key', key.padEnd(8) + ': '], ['', value]] });
+      const lines = [
+        { cmd: true, parts: [['prompt', '$ '], ['', 'nowplaying --now']] },
+        row('artist', track.artist || '—'),
+        row('title', track.title || '—'),
+      ];
+      if (track.album) lines.push(row('album', track.year ? `${track.album} (${track.year})` : track.album));
+      if (track.genre) lines.push(row('genre', track.genre));
+      if (track.tags && track.tags.bpm) lines.push(row('bpm', track.tags.bpm));
+      lines.push({ elapsed: true, parts: [['key', 'elapsed'.padEnd(8) + ': ']] });
+      return lines;
+    }
+
+    async function typeOut(track) {
+      const run = ++typingRun;
+      screen.replaceChildren(cursor);
+      timeSpan = null;
+      for (const line of linesFor(track)) {
+        for (const [cls, text] of line.parts) {
+          const span = document.createElement('span');
+          span.className = cls;
+          screen.insertBefore(span, cursor);
+          for (const ch of text) {
+            if (run !== typingRun) return;
+            span.textContent += ch;
+            await sleep(line.cmd ? COMMAND_CHAR_MS : OUTPUT_CHAR_MS);
+          }
+        }
+        if (line.elapsed) {
+          timeSpan = document.createElement('span');
+          timeSpan.textContent = NowPlaying.formatTime(NowPlaying.elapsed());
+          screen.insertBefore(timeSpan, cursor);
+        }
+        screen.insertBefore(document.createTextNode('\n'), cursor);
+        await sleep(line.cmd ? 300 : 60);
+      }
+      // a fresh prompt after the output
+      const prompt = document.createElement('span');
+      prompt.className = 'prompt';
+      prompt.textContent = '$ ';
+      screen.insertBefore(prompt, cursor);
+    }
+
+    function show(track) {
+      $('term').classList.remove('hidden');
+      typeOut(track);
+      NowPlaying.autoHide(() => $('term').classList.add('hidden'));
+    }
+
+    setInterval(() => {
+      if (timeSpan) timeSpan.textContent = NowPlaying.formatTime(NowPlaying.elapsed());
+    }, 500);
+
+    NowPlaying.start({ onTrack: show });
+  </script>
+</body>
+
+</html>

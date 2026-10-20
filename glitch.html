@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <title>Now Playing – Glitch</title>
+  <!--
+    Cyberpunk glitch: RGB-split title that tears apart when the track changes
+    (the text swaps in the middle of the burst) and twitches now and then.
+    OBS: Browser Source, URL http://localhost/glitch.html, 1920x1080, transparent.
+    URL parameters: see nowplaying.js (?hide=, ?ws=, ?demo).
+  -->
+  <style>
+    html,
+    body {
+      margin: 0;
+      height: 100%;
+      background: transparent;
+      overflow: hidden;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      color: #fff;
+    }
+
+    #wrap {
+      position: absolute;
+      left: 50%;
+      bottom: 70px;
+      width: 1400px;
+      padding: 22px 40px 26px;
+      box-sizing: border-box;
+      overflow: hidden;
+      transform: translateX(-50%);
+      text-align: center;
+      border: 1px solid rgba(0, 255, 249, .25);
+      background:
+        repeating-linear-gradient(rgba(255, 255, 255, .03) 0 1px, transparent 1px 4px),
+        rgba(5, 5, 12, .82);
+      box-shadow: 0 0 30px rgba(255, 0, 200, .15);
+    }
+
+    /* CRT power on / off */
+    #wrap.on {
+      animation: crt-on .5s cubic-bezier(.2, 1, .3, 1) both;
+    }
+
+    #wrap:not(.on) {
+      animation: crt-off .35s ease-in both;
+    }
+
+    @keyframes crt-on {
+      0% { transform: translateX(-50%) scale(1, .01); filter: brightness(4); }
+      60% { transform: translateX(-50%) scale(1, 1.05); }
+      100% { transform: translateX(-50%) scale(1, 1); filter: none; }
+    }
+
+    @keyframes crt-off {
+      to { transform: translateX(-50%) scale(1, .01); opacity: 0; filter: brightness(4); }
+    }
+
+    .label {
+      display: flex;
+      justify-content: center;
+      gap: 24px;
+      font: 700 14px/1 Consolas, monospace;
+      letter-spacing: 6px;
+      color: #ff3df2;
+    }
+
+    #time {
+      color: #00fff9;
+    }
+
+    /* the title has two colored copies (::before / ::after) from data-text */
+    .glitch {
+      position: relative;
+      margin-top: 12px;
+      white-space: nowrap;
+      font: 900 64px/1.1 "Segoe UI", system-ui, sans-serif;
+      letter-spacing: 1px;
+    }
+
+    .glitch::before,
+    .glitch::after {
+      content: attr(data-text);
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      pointer-events: none;
+    }
+
+    .glitch::before {
+      color: #ff00c8;
+      transform: translateX(-2px);
+      mix-blend-mode: screen;
+      animation: twitch-a 5s infinite steps(1);
+    }
+
+    .glitch::after {
+      color: #00fff9;
+      transform: translateX(2px);
+      mix-blend-mode: screen;
+      animation: twitch-b 5s infinite steps(1);
+    }
+
+    /* idle twitches: short slices jumping sideways, mostly at rest */
+    @keyframes twitch-a {
+      0%, 88%, 100% { clip-path: inset(0 0 0 0); transform: translateX(-2px); }
+      90% { clip-path: inset(20% 0 55% 0); transform: translateX(-14px); }
+      93% { clip-path: inset(65% 0 10% 0); transform: translateX(10px); }
+    }
+
+    @keyframes twitch-b {
+      0%, 89%, 100% { clip-path: inset(0 0 0 0); transform: translateX(2px); }
+      91% { clip-path: inset(50% 0 25% 0); transform: translateX(16px); }
+      94% { clip-path: inset(5% 0 70% 0); transform: translateX(-12px); }
+    }
+
+    /* strong burst on a track change */
+    .glitch.burst {
+      animation: shake .1s infinite;
+    }
+
+    .glitch.burst::before {
+      animation: burst-a .25s infinite steps(2);
+    }
+
+    .glitch.burst::after {
+      animation: burst-b .2s infinite steps(2);
+    }
+
+    @keyframes shake {
+      50% { transform: translate(3px, -2px) skewX(-6deg); }
+    }
+
+    @keyframes burst-a {
+      0% { clip-path: inset(10% 0 60% 0); transform: translateX(-24px); }
+      100% { clip-path: inset(55% 0 15% 0); transform: translateX(18px); }
+    }
+
+    @keyframes burst-b {
+      0% { clip-path: inset(70% 0 5% 0); transform: translateX(26px); }
+      100% { clip-path: inset(15% 0 50% 0); transform: translateX(-20px); }
+    }
+
+    #artist {
+      margin-top: 6px;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      font: 600 26px/1.2 Consolas, monospace;
+      letter-spacing: 5px;
+      color: #9ffcff;
+      text-transform: uppercase;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="wrap">
+    <div class="label"><span>// NOW PLAYING</span><span id="time">0:00</span></div>
+    <div class="glitch" id="title" data-text=""></div>
+    <div id="artist"></div>
+  </div>
+
+  <script src="nowplaying.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const BURST_MS = 900;   // total length of the change glitch
+    const SWAP_MS = 350;    // the text is replaced while the burst is strongest
+
+    function setText(track) {
+      const title = $('title');
+      const text = track.title || '—';
+      title.textContent = text;
+      title.dataset.text = text;
+      NowPlaying.fitText(title, 28);
+      $('artist').textContent = track.artist || '';
+    }
+
+    function show(track, previous) {
+      const wrap = $('wrap');
+      const title = $('title');
+      if (!previous || !wrap.classList.contains('on')) {
+        setText(track);
+        wrap.classList.add('on');
+      } else {
+        title.classList.add('burst');
+        setTimeout(() => setText(track), SWAP_MS);
+        setTimeout(() => title.classList.remove('burst'), BURST_MS);
+      }
+      NowPlaying.autoHide(() => wrap.classList.remove('on'));
+    }
+
+    setInterval(() => {
+      const t = NowPlaying.track;
+      if (t) $('time').textContent = t.idle ? 'NO SIGNAL' : NowPlaying.formatTime(NowPlaying.elapsed());
+    }, 500);
+
+    NowPlaying.start({ onTrack: show });
+  </script>
+</body>
+
+</html>

@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <title>Now Playing – Retrowave</title>
+  <!--
+    80s synthwave card: striped sunset sun, endless neon grid floor, chrome title
+    and a neon script artist name. Wipes in from the left.
+    OBS: Browser Source, URL http://localhost/retrowave.html, 1920x1080, transparent.
+    URL parameters: see nowplaying.js (?hide=, ?ws=, ?demo).
+  -->
+  <style>
+    html,
+    body {
+      margin: 0;
+      height: 100%;
+      background: transparent;
+      overflow: hidden;
+    }
+
+    #card {
+      position: absolute;
+      left: 60px;
+      bottom: 60px;
+      width: 960px;
+      height: 280px;
+      overflow: hidden;
+      border-radius: 16px;
+      background: linear-gradient(#12002b 0%, #3d0a5c 45%, #ff2e88 100%);
+      box-shadow: 0 0 0 2px rgba(255, 80, 200, .6), 0 0 40px rgba(255, 46, 136, .5);
+      clip-path: inset(0 0 0 0 round 16px);
+      transition: clip-path .9s cubic-bezier(.7, 0, .2, 1);
+    }
+
+    #card.hidden {
+      clip-path: inset(0 100% 0 0 round 16px);
+    }
+
+    /* striped sun on the right */
+    .sun {
+      position: absolute;
+      right: 70px;
+      top: 26px;
+      width: 230px;
+      height: 230px;
+      border-radius: 50%;
+      background: linear-gradient(#ffe45c 10%, #ff8a3d 50%, #ff2e88 90%);
+      box-shadow: 0 0 60px rgba(255, 140, 60, .8);
+      -webkit-mask: linear-gradient(#000 52%, transparent 52% 56%, #000 56% 64%, transparent 64% 69%,
+          #000 69% 76%, transparent 76% 82%, #000 82% 88%, transparent 88% 95%, #000 95%);
+      mask: linear-gradient(#000 52%, transparent 52% 56%, #000 56% 64%, transparent 64% 69%,
+          #000 69% 76%, transparent 76% 82%, #000 82% 88%, transparent 88% 95%, #000 95%);
+    }
+
+    /* grid floor in perspective, moving towards the viewer */
+    .floor {
+      position: absolute;
+      left: -50%;
+      right: -50%;
+      bottom: -40px;
+      height: 150px;
+      background:
+        linear-gradient(#ff4fd8 2px, transparent 2px),
+        linear-gradient(90deg, #ff4fd8 2px, transparent 2px);
+      background-size: 70px 36px;
+      background-color: #1a0030;
+      transform: perspective(260px) rotateX(62deg);
+      transform-origin: top;
+      animation: drive 1.2s linear infinite;
+      box-shadow: inset 0 40px 40px -20px #1a0030;
+    }
+
+    @keyframes drive {
+      to {
+        background-position: 0 36px;
+      }
+    }
+
+    .text {
+      position: absolute;
+      left: 44px;
+      top: 34px;
+      right: 330px;
+    }
+
+    .kicker {
+      font: 700 15px/1 "Segoe UI", sans-serif;
+      letter-spacing: 8px;
+      color: #7ff3ff;
+      text-shadow: 0 0 8px #00e5ff;
+    }
+
+    /* chrome text: two-tone metal gradient with a hard horizon line */
+    #title {
+      margin-top: 14px;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      font: italic 900 56px/1.15 "Arial Black", "Segoe UI", sans-serif;
+      background: linear-gradient(#ffffff 0%, #bfe9ff 45%, #3b2a7a 50%, #ff9de6 75%, #ffffff 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      filter: drop-shadow(0 3px 0 #2a0a4a) drop-shadow(0 0 12px rgba(255, 79, 216, .6));
+    }
+
+    #artist {
+      margin-top: 4px;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      font: italic 44px/1.2 "Brush Script MT", "Segoe Script", cursive;
+      color: #ff4fd8;
+      text-shadow: 0 0 6px #ff4fd8, 0 0 22px #ff2e88;
+      transform: rotate(-3deg);
+      transform-origin: left;
+    }
+
+    #meta {
+      margin-top: 8px;
+      font: 600 15px/1 Consolas, monospace;
+      letter-spacing: 2px;
+      color: #ffd6f5;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="card" class="hidden">
+    <div class="sun"></div>
+    <div class="floor"></div>
+    <div class="text">
+      <div class="kicker">NOW PLAYING</div>
+      <div id="title"></div>
+      <div id="artist"></div>
+      <div id="meta"></div>
+    </div>
+  </div>
+
+  <script src="nowplaying.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const WIPE_MS = 900;  // matches the clip-path transition
+    let metaText = '';
+
+    function show(track, previous) {
+      const card = $('card');
+      card.classList.add('hidden');
+      setTimeout(() => {
+        $('title').textContent = track.title || '—';
+        $('artist').textContent = track.artist || '';
+        const bpm = track.tags && track.tags.bpm ? `${track.tags.bpm} BPM` : '';
+        metaText = [track.genre, bpm].filter(Boolean).join(' · ');
+        updateMeta();
+        card.classList.remove('hidden');
+        NowPlaying.fitText($('title'), 28);
+        NowPlaying.autoHide(() => card.classList.add('hidden'));
+      }, previous ? WIPE_MS : 50);
+    }
+
+    function updateMeta() {
+      const t = NowPlaying.track;
+      if (!t) return;
+      $('meta').textContent = t.idle
+        ? 'INSERT COIN · SYSTEM READY'
+        : [NowPlaying.formatTime(NowPlaying.elapsed()), metaText].filter(Boolean).join('  ·  ');
+    }
+
+    setInterval(updateMeta, 500);
+    NowPlaying.start({ onTrack: show });
+  </script>
+</body>
+
+</html>

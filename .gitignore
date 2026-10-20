@@ -1,0 +1,20 @@
+# build output (build.bat / release.bat)
+bin/
+lib/
+dist/
+
+# compiler artifacts when building by hand
+*.exe
+*.o
+*.ppu
+*.a
+*.res
+*.compiled
+*.or
+
+# Lazarus / editor leftovers
+backup/
+*.bak
+*.lps
+.vscode/
+.idea/

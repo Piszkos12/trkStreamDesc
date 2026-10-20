@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <title>Now Playing – Orbit</title>
+  <!--
+    Round badge: artist and title orbit along a circle around a pulsing core that
+    shows the elapsed time. The colors follow the track.
+    OBS: Browser Source, URL http://localhost/orbit.html, 1920x1080, transparent.
+    URL parameters: see nowplaying.js (?hide=, ?ws=, ?demo).
+  -->
+  <style>
+    html,
+    body {
+      margin: 0;
+      height: 100%;
+      background: transparent;
+      overflow: hidden;
+      font-family: "Segoe UI", system-ui, sans-serif;
+    }
+
+    #orbit {
+      --accent: hsl(190 90% 55%);
+      position: absolute;
+      right: 60px;
+      bottom: 50px;
+      width: 360px;
+      height: 360px;
+      transition: transform .7s cubic-bezier(.3, 1.4, .5, 1), opacity .5s;
+    }
+
+    #orbit.hidden {
+      opacity: 0;
+      transform: scale(.2) rotate(-120deg);
+      transition-timing-function: ease-in;
+    }
+
+    svg {
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+    }
+
+    /* expanding rings behind the core */
+    .pulse {
+      fill: none;
+      stroke: var(--accent);
+      stroke-width: 2;
+      transform-box: view-box;
+      transform-origin: 180px 180px;
+      animation: pulse 3s ease-out infinite;
+    }
+
+    .p2 { animation-delay: 1s; }
+    .p3 { animation-delay: 2s; }
+
+    #orbit.idle .pulse {
+      animation-duration: 6s;
+    }
+
+    @keyframes pulse {
+      from { transform: scale(.75); opacity: .9; }
+      to { transform: scale(1.35); opacity: 0; }
+    }
+
+    .core {
+      fill: rgba(8, 10, 20, .88);
+      stroke: var(--accent);
+      stroke-width: 3;
+      filter: drop-shadow(0 0 14px var(--accent));
+    }
+
+    .track-ring {
+      fill: none;
+      stroke: rgba(255, 255, 255, .12);
+      stroke-width: 34;
+    }
+
+    /* the orbiting text group */
+    .spin {
+      transform-box: view-box;
+      transform-origin: 180px 180px;
+      animation: spin 24s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .ring-text {
+      font-size: 19px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      fill: #fff;
+      text-transform: uppercase;
+      /* dark outline keeps the text readable over bright video */
+      stroke: rgba(0, 0, 0, .6);
+      stroke-width: 3px;
+      paint-order: stroke;
+    }
+
+    .center {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      text-align: center;
+      pointer-events: none;
+    }
+
+    .kicker {
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 5px;
+      color: var(--accent);
+    }
+
+    #time {
+      font-size: 46px;
+      font-weight: 300;
+      font-variant-numeric: tabular-nums;
+    }
+
+    #bpm {
+      font-size: 14px;
+      letter-spacing: 2px;
+      opacity: .7;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="orbit" class="hidden">
+    <svg viewBox="0 0 360 360">
+      <defs>
+        <!-- full circle starting at the left, radius 140 -->
+        <path id="ring" d="M40,180 a140,140 0 1,1 280,0 a140,140 0 1,1 -280,0" />
+      </defs>
+      <circle class="pulse p1" cx="180" cy="180" r="110" />
+      <circle class="pulse p2" cx="180" cy="180" r="110" />
+      <circle class="pulse p3" cx="180" cy="180" r="110" />
+      <circle class="track-ring" cx="180" cy="180" r="146" />
+      <circle class="core" cx="180" cy="180" r="110" />
+      <g class="spin">
+        <text class="ring-text" dy="6"><textPath href="#ring" id="ringText"></textPath></text>
+      </g>
+    </svg>
+    <div class="center">
+      <div class="kicker" id="kicker">ON AIR</div>
+      <div id="time">0:00</div>
+      <div id="bpm"></div>
+    </div>
+  </div>
+
+  <script src="nowplaying.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const OUT_MS = 500;
+    const CIRCUMFERENCE = 2 * Math.PI * 140;  // length of #ring
+
+    function hue(text) {
+      let h = 0;
+      for (const ch of text) h = (h * 31 + ch.codePointAt(0)) % 360;
+      return h;
+    }
+
+    /** Repeats "ARTIST • TITLE •" to fill the circle and stretches it to close
+        the loop exactly; a text longer than the circle is squeezed. */
+    function setRingText(text) {
+      const path = $('ringText');
+      const unit = `${text}  •  `;
+      path.textContent = unit;
+      path.removeAttribute('textLength');
+      const unitLength = path.getComputedTextLength() || 1;
+      const copies = Math.max(1, Math.floor(CIRCUMFERENCE / unitLength));
+      path.textContent = unit.repeat(copies);
+      path.setAttribute('textLength', CIRCUMFERENCE.toFixed(1));
+      path.setAttribute('lengthAdjust', copies > 1 || unitLength < CIRCUMFERENCE ? 'spacing' : 'spacingAndGlyphs');
+    }
+
+    function show(track, previous) {
+      const orbit = $('orbit');
+      orbit.classList.add('hidden');
+      setTimeout(() => {
+        const h = hue((track.artist || '') + (track.title || ''));
+        orbit.style.setProperty('--accent', track.idle ? 'hsl(200 15% 70%)' : `hsl(${h} 90% 60%)`);
+        orbit.classList.toggle('idle', !!track.idle);
+        setRingText([track.artist, track.title].filter(Boolean).join('  •  '));
+        $('kicker').textContent = track.idle ? 'STAND BY' : 'ON AIR';
+        $('bpm').textContent = track.tags && track.tags.bpm ? `${track.tags.bpm} BPM` : (track.genre || '');
+        orbit.classList.remove('hidden');
+        NowPlaying.autoHide(() => orbit.classList.add('hidden'));
+      }, previous ? OUT_MS : 50);
+    }
+
+    setInterval(() => {
+      if (NowPlaying.track) $('time').textContent = NowPlaying.formatTime(NowPlaying.elapsed());
+    }, 500);
+
+    NowPlaying.start({ onTrack: show });
+  </script>
+</body>
+
+</html>

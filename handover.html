@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <title>Now Playing – Handover</title>
+  <!--
+    Appears only when a new track starts: the previous track is shown, the new
+    one slides in below it, the two swap places along an arc (new on top,
+    previous below), then the whole thing slowly fades away.
+    OBS: Browser Source, URL http://localhost/handover.html, 1920x1080, transparent.
+    URL parameters: see nowplaying.js (?ws=, ?demo). ?hide=N sets the hold time
+    in seconds before the fade (default 7).
+  -->
+  <style>
+    html,
+    body {
+      margin: 0;
+      height: 100%;
+      background: transparent;
+      overflow: hidden;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      color: #fff;
+    }
+
+    #stage {
+      position: absolute;
+      left: 60px;
+      bottom: 60px;
+      width: 780px;
+      height: 260px;
+      transition: opacity 3.5s ease-in-out;
+    }
+
+    #stage.gone {
+      opacity: 0;
+    }
+
+    /* top position = scale 1 at y 0; bottom position = scaled down at y 150 */
+    .card {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 100%;
+      box-sizing: border-box;
+      padding: 18px 28px 20px;
+      border-radius: 18px;
+      border: 1px solid rgba(255, 255, 255, .14);
+      background: linear-gradient(110deg, rgba(18, 20, 36, .9), rgba(36, 22, 56, .82));
+      box-shadow: 0 18px 40px rgba(0, 0, 0, .45);
+      transform-origin: left top;
+    }
+
+    .label {
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 5px;
+      color: #8fd3ff;
+      transition: color .8s;
+    }
+
+    .title {
+      margin-top: 6px;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      font-size: 42px;
+      font-weight: 800;
+    }
+
+    .artist {
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      font-size: 22px;
+      color: #cdd3ff;
+    }
+
+    /* the old track's label turns grey when it becomes "previous" */
+    .card.past .label {
+      color: #9a9aae;
+    }
+
+    /* first appearance (no previous track) */
+    .card.enter {
+      animation: enter .9s cubic-bezier(.2, 1, .3, 1) both;
+    }
+
+    @keyframes enter {
+      from { opacity: 0; transform: translateY(40px); }
+    }
+
+    /* the new track waits below the old one, then shows up */
+    .card.waiting {
+      opacity: 0;
+      transform: translateY(150px) scale(.72);
+      transition: opacity .7s;
+    }
+
+    .card.waiting.peek {
+      opacity: .85;
+    }
+
+    /* the swap: crossing arcs, the rising card passes in front */
+    .card.rise {
+      z-index: 2;
+      animation: rise 1.2s cubic-bezier(.65, 0, .35, 1) forwards;
+    }
+
+    .card.sink {
+      z-index: 1;
+      animation: sink 1.2s cubic-bezier(.65, 0, .35, 1) forwards;
+    }
+
+    @keyframes rise {
+      0% { opacity: .85; transform: translateY(150px) scale(.72); }
+      50% { transform: translate(60px, 75px) scale(.9); }
+      100% { opacity: 1; transform: none; }
+    }
+
+    @keyframes sink {
+      0% { opacity: 1; transform: none; }
+      50% { transform: translate(-40px, 75px) scale(.86); }
+      100% { opacity: .6; transform: translateY(150px) scale(.72); }
+    }
+
+    /* warm-up: a soft breathing card */
+    .card.idle {
+      animation: enter .9s cubic-bezier(.2, 1, .3, 1) both, breathe 3s ease-in-out .9s infinite;
+    }
+
+    @keyframes breathe {
+      50% { opacity: .55; }
+    }
+  </style>
+</head>
+
+<body>
+  <div id="stage"></div>
+
+  <script src="nowplaying.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const PEEK_AT_MS = 500;    // the new track appears below the old one
+    const SWAP_AT_MS = 1600;   // the two cards start to swap
+    const SWAP_MS = 1200;      // matches the rise / sink animations
+    const HOLD_MS = (NowPlaying.hideAfter || 7) * 1000;  // visible time after the swap
+    let timers = [];
+
+    function later(ms, fn) {
+      timers.push(setTimeout(fn, ms));
+    }
+
+    function makeCard(track, label) {
+      const card = document.createElement('div');
+      card.className = 'card';
+      const parts = [['label', label], ['title', track.title || '—'], ['artist', track.artist || '']];
+      for (const [cls, text] of parts) {
+        const el = document.createElement('div');
+        el.className = cls;
+        el.textContent = text;
+        card.appendChild(el);
+      }
+      return card;
+    }
+
+    function setLabel(card, text) {
+      card.querySelector('.label').textContent = text;
+    }
+
+    function show(track, previous) {
+      // a new track cancels a running sequence
+      timers.forEach(clearTimeout);
+      timers = [];
+      const stage = $('stage');
+      stage.classList.remove('gone');
+
+      // warm-up, or the first track: a single card
+      if (!previous || previous.idle) {
+        const card = makeCard(track, track.idle ? 'STAND BY' : 'NOW PLAYING');
+        card.classList.add(track.idle ? 'idle' : 'enter');
+        stage.replaceChildren(card);
+        if (!track.idle) later(HOLD_MS, () => stage.classList.add('gone'));
+        return;
+      }
+
+      const oldCard = makeCard(previous, 'NOW PLAYING');
+      const newCard = makeCard(track, 'UP NEXT');
+      newCard.classList.add('waiting');
+      stage.replaceChildren(oldCard, newCard);
+
+      later(PEEK_AT_MS, () => newCard.classList.add('peek'));
+      later(SWAP_AT_MS, () => {
+        setLabel(oldCard, 'PREVIOUS');
+        oldCard.classList.add('past', 'sink');
+        setLabel(newCard, 'NOW PLAYING');
+        newCard.classList.remove('waiting', 'peek');
+        newCard.classList.add('rise');
+      });
+      later(SWAP_AT_MS + SWAP_MS + HOLD_MS, () => stage.classList.add('gone'));
+    }
+
+    NowPlaying.start({ onTrack: show });
+  </script>
+</body>
+
+</html>

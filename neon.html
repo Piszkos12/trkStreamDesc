@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <title>Now Playing – Neon</title>
+  <!--
+    Neon card with a rotating rainbow border; the title drops in letter by letter.
+    OBS: Browser Source, URL http://localhost/neon.html, 1920x1080, transparent.
+    URL parameters: see nowplaying.js (?hide=, ?ws=).
+  -->
+  <style>
+    html,
+    body {
+      margin: 0;
+      height: 100%;
+      background: transparent;
+      overflow: hidden;
+      font-family: "Segoe UI", system-ui, sans-serif;
+    }
+
+    /* card: slides in from the left; the ::before layer is the spinning border */
+    #card {
+      position: absolute;
+      left: 60px;
+      bottom: 70px;
+      padding: 3px;
+      border-radius: 22px;
+      overflow: hidden;
+      opacity: 0;
+      transform: translateX(-120%) skewX(-8deg);
+      transition: transform .9s cubic-bezier(.2, 1.3, .4, 1), opacity .6s;
+    }
+
+    #card.on {
+      opacity: 1;
+      transform: none;
+    }
+
+    #card::before {
+      content: "";
+      position: absolute;
+      inset: -150%;
+      background: conic-gradient(from 0deg, #ff00d4, #00e5ff, #7cff00, #ffea00, #ff00d4);
+      animation: spin 4s linear infinite;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .inner {
+      position: relative;
+      min-width: 420px;
+      max-width: 1100px;
+      padding: 22px 34px 20px 30px;
+      border-radius: 19px;
+      background: rgba(8, 6, 20, .88);
+    }
+
+    /* "NOW PLAYING" line with the live dot and the elapsed time */
+    .label {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 6px;
+      text-transform: uppercase;
+      color: #00e5ff;
+      text-shadow: 0 0 8px #00e5ff;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #ff2d75;
+      box-shadow: 0 0 10px #ff2d75;
+      animation: pulse 1.2s infinite;
+    }
+
+    .dot.off {
+      background: #555;
+      box-shadow: none;
+      animation: none;
+    }
+
+    @keyframes pulse {
+      50% {
+        opacity: .25;
+      }
+    }
+
+    #time {
+      margin-left: auto;
+      letter-spacing: 2px;
+      color: #fff;
+    }
+
+    /* title: every letter is a span with its own animation delay; the letters
+       sit in a .letters strip that scrolls (marquee) when it does not fit */
+    #title {
+      /* vertical padding gives the glow room inside the clipping box; the
+         negative margins keep the layout where it was */
+      margin: -14px 0 -20px;
+      padding: 20px 0;
+      overflow: hidden;
+      white-space: nowrap;
+      font-size: 54px;
+      font-weight: 800;
+      color: #fff;
+      text-shadow: 0 0 6px #fff, 0 0 18px #ff00d4, 0 0 36px #ff00d4;
+    }
+
+    .letters {
+      display: inline-block;
+    }
+
+    #title.marquee .letters {
+      padding-right: 80px;
+      animation: marquee 14s linear infinite;
+      animation-delay: var(--marquee-delay);
+    }
+
+    @keyframes marquee {
+
+      0%,
+      15% {
+        transform: translateX(0);
+      }
+
+      100% {
+        transform: translateX(-100%);
+      }
+    }
+
+    .letters span {
+      display: inline-block;
+      white-space: pre;
+      opacity: 0;
+      transform: translateY(40px) rotate(8deg);
+      filter: blur(6px);
+      animation: drop .55s forwards cubic-bezier(.2, 1.4, .5, 1);
+    }
+
+    @keyframes drop {
+      to {
+        opacity: 1;
+        transform: none;
+        filter: none;
+      }
+    }
+
+    #artist {
+      margin-top: 2px;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      font-size: 30px;
+      font-weight: 600;
+      color: #b8f4ff;
+      text-shadow: 0 0 10px #00b7ff;
+      opacity: 0;
+      transform: translateX(-30px);
+      transition: all .7s .5s;
+    }
+
+    #card.on #artist {
+      opacity: 1;
+      transform: none;
+    }
+
+    /* album / genre / bpm line */
+    .meta {
+      display: flex;
+      gap: 18px;
+      margin-top: 10px;
+      font-size: 15px;
+      letter-spacing: 1px;
+      color: #c9a7ff;
+    }
+
+    .meta b {
+      font-weight: 600;
+      color: #fff;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="card">
+    <div class="inner">
+      <div class="label"><i class="dot off" id="dot"></i>Now playing<span id="time"></span></div>
+      <div id="title"></div>
+      <div id="artist"></div>
+      <div class="meta" id="meta"></div>
+    </div>
+  </div>
+
+  <script src="nowplaying.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const OUT_MS = 700;  // duration of the slide-out before the new track is shown
+    let hideTimer = null;
+
+    const LETTER_START_S = 0.25;  // delay of the first letter
+    const LETTER_STEP_S = 0.035;  // extra delay per letter
+    const LETTER_DROP_S = 0.55;   // duration of one letter's drop (matches the CSS)
+
+    /** Splits the title into letter spans with staggered animation delays and
+        turns on scrolling, after the last letter landed, when it overflows. */
+    function renderTitle(text) {
+      const title = $('title');
+      const letters = document.createElement('span');
+      letters.className = 'letters';
+      const chars = [...text];
+      letters.append(...chars.map((ch, i) => {
+        const span = document.createElement('span');
+        span.textContent = ch;
+        span.style.animationDelay = `${LETTER_START_S + i * LETTER_STEP_S}s`;
+        return span;
+      }));
+      title.classList.remove('marquee');
+      title.replaceChildren(letters);
+
+      const landed = LETTER_START_S + chars.length * LETTER_STEP_S + LETTER_DROP_S;
+      title.style.setProperty('--marquee-delay', `${landed}s`);
+      requestAnimationFrame(() => title.classList.toggle('marquee', letters.scrollWidth > title.clientWidth));
+    }
+
+    /** One "LABEL value" entry of the meta line. */
+    function metaItem(label, value) {
+      const item = document.createElement('span');
+      const strong = document.createElement('b');
+      strong.textContent = value;
+      item.append(`${label} `, strong);
+      return item;
+    }
+
+    function show(track, previous) {
+      const card = $('card');
+      card.classList.remove('on');
+      setTimeout(() => {
+        renderTitle(track.title || '—');
+        $('artist').textContent = track.artist || '';
+        const meta = [];
+        if (track.album) meta.push(metaItem('ALBUM', track.album));
+        if (track.genre) meta.push(metaItem('GENRE', track.genre));
+        if (track.tags && track.tags.bpm) meta.push(metaItem('BPM', track.tags.bpm));
+        $('meta').replaceChildren(...meta);
+        card.classList.add('on');
+
+        clearTimeout(hideTimer);
+        if (NowPlaying.hideAfter > 0) {
+          hideTimer = setTimeout(() => card.classList.remove('on'), NowPlaying.hideAfter * 1000);
+        }
+      }, previous ? OUT_MS : 50);
+    }
+
+    setInterval(() => {
+      if (NowPlaying.track) $('time').textContent = NowPlaying.formatTime(NowPlaying.elapsed());
+    }, 500);
+
+    NowPlaying.start({
+      onTrack: show,
+      onSource: (live) => $('dot').classList.toggle('off', !live),
+    });
+  </script>
+</body>
+
+</html>
